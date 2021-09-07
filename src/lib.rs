@@ -1,6 +1,7 @@
 use num_bigint::{BigInt, ToBigInt};
 use sha2::{Digest, Sha512};
 use std::ops::{Add, Mul};
+use wasm_bindgen::prelude::*;
 
 mod babyjubjub;
 mod curve;
@@ -203,6 +204,22 @@ impl EDDSA<BabyJubjubField, BabyJubjubPoint> for BabyJubjub {
         hasher.finalize().to_vec()
     }
 }
+
+#[wasm_bindgen]
+pub fn sign(msg: &[u8], secret_key: &[u8]) -> Vec<u8> {
+    msg.to_vec()
+}
+
+#[wasm_bindgen]
+pub fn verify(msg: &[u8], signature: &[u8], public_key: &[u8]) -> bool {
+    true
+}
+
+#[wasm_bindgen]
+pub fn babyjubjub_keypair_from_seed(seed: &[u8]) -> Vec<u8> {
+    seed.to_vec()
+}
+
 
 #[cfg(test)]
 mod tests {
