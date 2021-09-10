@@ -84,63 +84,55 @@ impl Curve<BabyJubjubField> for BabyJubjubPoint {
         Point::<BabyJubjubField> { x, y }
     }
 
-    fn mul_scalar(self, k: BigInt) -> Self {
-        if k == bn_0() {
+    fn mul(&self, k: &BigInt) -> Self {
+        if *k == bn_0() {
             BabyJubjubPoint::get_origin()
-        } else if k == bn_1() {
-            self
+        } else if *k == bn_1() {
+            self.clone()
         } else if k.clone() % bn_2() == bn_1() {
-            self.clone() + self.mul_scalar(k - 1)
+            self.add(&self.mul(&(k - 1)))
         } else {
-            let p = self.clone() + self;
-            p.mul_scalar(k >> 1)
+            let p = self.add(&self);
+            p.mul(&(k >> 1))
         }
     }
-}
-
-impl Add for BabyJubjubPoint {
-    type Output = BabyJubjubPoint;
-
-    fn add(self, other: Self) -> Self::Output {
-        let x1 = self.x;
-        let y1 = self.y;
-        let x2 = other.x.clone();
-        let y2 = other.y.clone();
-        let a = Self::get_a();
-        let d = Self::get_d();
-        let one: BabyJubjubField = BabyJubjubField::new(bn_1());
-
-        let tmp = d.clone() * x1.clone() * x2.clone() * y1.clone() * y2.clone();
-
-        // ref: https://eips.ethereum.org/EIPS/eip-2494
-        //   x3 = (x1*y2 + y1*x2)/(1 + d*x1*x2*y1*y2)
-        //   y3 = (y1*y2 - a*x1*x2)/(1 - d*x1*x2*y1*y2)
-        // let tmp1 = (y1.clone() * y2.clone() - a.clone() * x1.clone() * x2.clone());
-        // let tmp2 = (one.clone() - tmp.clone());
-        // let tmp3 = tmp1.clone() / tmp2.clone();
-        Self {
-            x: (x1.clone() * y2.clone() + y1.clone() * x2.clone()) / (one.clone() + tmp.clone()),
-            y: (y1.clone() * y2.clone() - a * x1.clone() * x2.clone())
-                / (one.clone() - tmp.clone()),
-        }
-    }
-}
-
-impl Mul<BabyJubjubField> for BabyJubjubPoint {
-    type Output = BabyJubjubPoint;
-
-    fn mul(self, k: BabyJubjubField) -> Self {
-        if k.clone().v == bn_0() {
+/*
+    fn mul(&self, k: &BabyJubjubField) -> Self {
+        if k.v == bn_0() {
             BabyJubjubPoint::get_origin()
         } else if k.clone().v == bn_1() {
             self.clone()
         } else if k.clone().v % bn_2() == bn_1() {
-            self.clone() + self.clone().mul(BabyJubjubField::new(k.clone().v - 1))
+            self.add(&self.mul(&BabyJubjubField::new(k.clone().v - 1)))
         } else {
-            let p = self.clone() + self.clone();
-            p.mul(BabyJubjubField::new(k.clone().v / 2))
+            let p = self.add(self);
+            p.mul(&BabyJubjubField::new(k.clone().v / 2))
         }
     }
+*/
+    fn add(&self, other: &Self) -> Self {
+            let x1 = &self.x;
+            let y1 = &self.y;
+            let x2 = other.x.clone();
+            let y2 = other.y.clone();
+            let a = Self::get_a();
+            let d = Self::get_d();
+            let one: BabyJubjubField = BabyJubjubField::new(bn_1());
+    
+            let tmp = d.clone() * x1.clone() * x2.clone() * y1.clone() * y2.clone();
+    
+            // ref: https://eips.ethereum.org/EIPS/eip-2494
+            //   x3 = (x1*y2 + y1*x2)/(1 + d*x1*x2*y1*y2)
+            //   y3 = (y1*y2 - a*x1*x2)/(1 - d*x1*x2*y1*y2)
+            // let tmp1 = (y1.clone() * y2.clone() - a.clone() * x1.clone() * x2.clone());
+            // let tmp2 = (one.clone() - tmp.clone());
+            // let tmp3 = tmp1.clone() / tmp2.clone();
+            Self {
+                x: (x1.clone() * y2.clone() + y1.clone() * x2.clone()) / (one.clone() + tmp.clone()),
+                y: (y1.clone() * y2.clone() - a * x1.clone() * x2.clone())
+                    / (one.clone() - tmp.clone()),
+            }
+        }
 }
 
 trait EllipticCurve<T> {}
@@ -167,10 +159,13 @@ impl EDDSA<BabyJubjubField, BabyJubjubPoint> for BabyJubjub {
     // https://datatracker.ietf.org/doc/html/rfc8032#section-5.1.5
     fn pubkey_from_secretkey(
         secret_key: &BabyJubjubField,
-    ) -> <Point<BabyJubjubField> as Mul<BabyJubjubField>>::Output {
+    ) -> Point<BabyJubjubField> {
         let scalar_key = Self::secret_scalar(secret_key);
 
-        BabyJubjubPoint::get_basepoint() * BabyJubjubField::new(scalar_key)
+        println!("xx");
+       let s =  BabyJubjubPoint::get_basepoint().mul(&scalar_key);
+        println!("xx");
+       s
     }
 
     fn verify(data: &[u8], signature: Sign<BabyJubjubField>, public_key: BabyJubjubPoint) -> bool {
@@ -181,9 +176,9 @@ impl EDDSA<BabyJubjubField, BabyJubjubPoint> for BabyJubjub {
         );
         let concat = BigInt::from_bytes_le(num_bigint::Sign::Plus, h.as_slice());
 
-        let l = BabyJubjubPoint::get_basepoint() * signature.s;
-        let r1 = public_key.mul_scalar(8 * concat);
-        let r2 = signature.r + r1.clone();
+        let l = BabyJubjubPoint::get_basepoint().mul(&signature.s.v);
+        let r1 = public_key.mul(&(8 * concat));
+        let r2 = signature.r.add(&r1);
 
         l == r2
     }
@@ -205,7 +200,7 @@ impl EDDSA<BabyJubjubField, BabyJubjubPoint> for BabyJubjub {
         let r = BigInt::from_bytes_le(num_bigint::Sign::Plus, r.as_slice())
             % BabyJubjubField::suborder().v;
 
-        let R = BabyJubjubPoint::get_basepoint() * BabyJubjubField::new(r.clone());
+        let R = BabyJubjubPoint::get_basepoint().mul(&r);
 
         let concat = [&R.encode(), &pk.encode(), data].concat();
         let hash_concat = Self::hash(concat.as_slice());
@@ -261,11 +256,11 @@ mod tests {
 
     #[test]
     fn babyjubjub_point_add() {
-        let p1 = Point::<BabyJubjubField> {
+        let p1 = &Point::<BabyJubjubField> {
             x: BabyJubjubField::new(BigInt::parse_bytes(b"17777552123799933955779906779655732241715742912184938656739573121738514868268", 10).unwrap()),
             y: BabyJubjubField::new(BigInt::parse_bytes(b"2626589144620713026669568689430873010625803728049924121243784502389097019475", 10).unwrap())
         };
-        let p2 = Point::<BabyJubjubField> {
+        let p2 = &Point::<BabyJubjubField> {
             x: BabyJubjubField::new(BigInt::parse_bytes(b"16540640123574156134436876038791482806971768689494387082833631921987005038935", 10).unwrap()),
             y: BabyJubjubField::new(BigInt::parse_bytes(b"20819045374670962167435360035096875258406992893633759881276124905556507972311", 10).unwrap())
         };
@@ -296,14 +291,14 @@ mod tests {
             y: BabyJubjubField::new(BigInt::parse_bytes(b"1", 10).unwrap()),
         };
 
-        assert_eq!(p1.clone() + p2, p3);
-        assert_eq!(id.clone() + id.clone(), id.clone());
-        assert_eq!(p1.clone() + p1.clone(), p1_double);
+        assert_eq!(p1.add(p2), p3);
+        assert_eq!(id.add(&id), id);
+        assert_eq!(p1.add(p1), p1_double);
     }
 
     #[test]
     fn babyjubjub_point_mul() {
-        let p1 = Point::<BabyJubjubField>::get_basepoint();
+        let p1 = &Point::<BabyJubjubField>::get_basepoint();
 
         let p2 = Point::<BabyJubjubField> {
             x: BabyJubjubField::new(BigInt::parse_bytes(b"0", 10).unwrap()),
@@ -317,65 +312,52 @@ mod tests {
             .unwrap(),
         );
 
-        let z = BabyJubjubField::new(BigInt::parse_bytes(b"0", 10).unwrap());
-        let o = BabyJubjubField::new(BigInt::parse_bytes(b"1", 10).unwrap());
-        assert_eq!(p1.clone().mul(z), BabyJubjubPoint::get_origin().clone());
-        assert_eq!(p1.clone().mul(o), p1.clone());
+        let z = BigInt::parse_bytes(b"0", 10).unwrap();
+        let o = BigInt::parse_bytes(b"1", 10).unwrap();
+        assert_eq!(p1.mul(&z), BabyJubjubPoint::get_origin().clone());
+        assert_eq!(p1.mul(&o), p1.clone());
         assert_eq!(
-            p1.clone() + p1.clone(),
-            p1.clone()
-                .mul(BabyJubjubField::new(BigInt::parse_bytes(b"2", 10).unwrap()))
+            p1.add(p1),
+            p1
+                .mul(&BigInt::parse_bytes(b"2", 10).unwrap())
         );
         assert_eq!(
-            p1.clone() + p1.clone() + p1.clone(),
-            p1.clone()
-                .mul(BabyJubjubField::new(BigInt::parse_bytes(b"3", 10).unwrap()))
+            p1.add(p1).add(p1),
+            p1
+                .mul(&BigInt::parse_bytes(b"3", 10).unwrap())
         );
         assert_eq!(
-            p1.clone() + p1.clone() + p1.clone() + p1.clone(),
-            p1.clone()
-                .mul(BabyJubjubField::new(BigInt::parse_bytes(b"4", 10).unwrap()))
+            p1.add(p1).add(p1).add(p1),
+            p1
+                .mul(&BigInt::parse_bytes(b"4", 10).unwrap())
         );
         assert_eq!(
-            p1.clone() + p1.clone() + p1.clone() + p1.clone() + p1.clone(),
-            p1.clone()
-                .mul(BabyJubjubField::new(BigInt::parse_bytes(b"5", 10).unwrap()))
+            p1.add(p1).add(p1).add(p1).add(p1),
+            p1
+                .mul(&BigInt::parse_bytes(b"5", 10).unwrap())
         );
         assert_eq!(
-            p1.clone() + p1.clone() + p1.clone() + p1.clone() + p1.clone() + p1.clone(),
-            p1.clone()
-                .mul(BabyJubjubField::new(BigInt::parse_bytes(b"6", 10).unwrap()))
+            p1.add(p1).add(p1).add(p1).add(p1).add(p1),
+            p1
+                .mul(&BigInt::parse_bytes(b"6", 10).unwrap())
         );
         assert_eq!(
-            p1.clone()
-                + p1.clone()
-                + p1.clone()
-                + p1.clone()
-                + p1.clone()
-                + p1.clone()
-                + p1.clone(),
-            p1.clone()
-                .mul(BabyJubjubField::new(BigInt::parse_bytes(b"7", 10).unwrap()))
+            p1.add(p1).add(p1).add(p1).add(p1).add(p1).add(p1),
+                        p1
+                .mul(&BigInt::parse_bytes(b"7", 10).unwrap())
         );
         assert_eq!(
-            p1.clone()
-                + p1.clone()
-                + p1.clone()
-                + p1.clone()
-                + p1.clone()
-                + p1.clone()
-                + p1.clone()
-                + p1.clone(),
-            p1.clone()
-                .mul(BabyJubjubField::new(BigInt::parse_bytes(b"8", 10).unwrap()))
+            p1.add(p1).add(p1).add(p1).add(p1).add(p1).add(p1).add(p1),
+            p1
+                .mul(&BigInt::parse_bytes(b"8", 10).unwrap())
         );
-        assert_eq!(p1.clone().mul(l.clone()), p2.clone());
+        assert_eq!(p1.mul(&l.v), p2.clone());
 
         let p = Point::<BabyJubjubField> {
             x: BabyJubjubField::new(BigInt::parse_bytes(b"17777552123799933955779906779655732241715742912184938656739573121738514868268", 10).unwrap()),
             y: BabyJubjubField::new(BigInt::parse_bytes(b"2626589144620713026669568689430873010625803728049924121243784502389097019475", 10).unwrap())
         };
-        let p = p * BabyJubjubField::new(3.to_bigint().unwrap());
+        let p = p.mul(&3.to_bigint().unwrap());
         assert_eq!(p.x, BabyJubjubField::new(BigInt::parse_bytes(b"19372461775513343691590086534037741906533799473648040012278229434133483800898", 10).unwrap()));
         assert_eq!(
             p.y,
@@ -396,7 +378,7 @@ mod tests {
             .unwrap(),
         );
         let p = p1.clone();
-        let p = p * r;
+        let p = p.mul(&r.v);
         assert_eq!(
             p.x,
             BabyJubjubField::new(
@@ -428,7 +410,7 @@ mod tests {
         };
         let scalar = 8.to_bigint().unwrap() * BigInt::parse_bytes(b"3555222839185221705021491425814961952405519748427783402552617991682219862759662171839441019252996282066424942781038390250059889384698141532893051346697349", 10).unwrap();
 
-        assert_eq!(p.mul_scalar(scalar), e);
+        assert_eq!(p.mul(&scalar), e);
     }
 
     #[test]

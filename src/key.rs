@@ -10,12 +10,10 @@ pub struct Sign<T> {
 }
 
 pub trait EDDSA<F: FiniteField + Random, C: Curve<F>>
-where
-    Point<F>: Mul<F>,
 {
     fn secret_scalar(secret_key: &F) -> BigInt;
 
-    fn pubkey_from_secretkey(secret_key: &F) -> <Point<F> as Mul<F>>::Output;
+    fn pubkey_from_secretkey(secret_key: &F) -> Point<F>;
 
     fn verify(data: &[u8], signature: Sign<F>, public_key: C) -> bool;
 

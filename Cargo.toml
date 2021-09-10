@@ -22,3 +22,9 @@ wasm-bindgen = "0.2"
 
 [lib]
 crate-type = ["cdylib"]
+
+[profile.dev]
+debuginfo-level = 1
+
+[profile.release]
+debuginfo-level = 1
