@@ -75,14 +75,13 @@ impl Curve<BabyJubjubField> for BabyJubjubPoint {
         let numerator = BabyJubjubField::new(bn_1()) - y.clone() * y.clone();
         let denominator = (Self::get_a() - Self::get_d() * y.clone() * y.clone()).inv();
         let mut x = (numerator * denominator).sqrt().unwrap().v;
-        if (sign && (x <= BabyJubjubField::order().v / 2)) ||
-           (!sign && (x > BabyJubjubField::order().v / 2)) {
+        if (sign && (x <= BabyJubjubField::order().v / 2))
+            || (!sign && (x > BabyJubjubField::order().v / 2))
+        {
             x *= -(1.to_bigint().unwrap());
         }
         let x = BabyJubjubField::new(x);
-        Point::<BabyJubjubField> {
-          x, y,
-        }
+        Point::<BabyJubjubField> { x, y }
     }
 
     fn mul_scalar(self, k: BigInt) -> Self {
@@ -229,33 +228,32 @@ impl EDDSA<BabyJubjubField, BabyJubjubPoint> for BabyJubjub {
 
 #[wasm_bindgen]
 pub fn sign(msg: &[u8], secret_key: &[u8]) -> Vec<u8> {
-        let sign = BabyJubjub::sign(msg, BabyJubjubField::decode(secret_key));
-        [sign.r.encode(), sign.s.encode()].concat()
+    let sign = BabyJubjub::sign(msg, BabyJubjubField::decode(secret_key));
+    [sign.r.encode(), sign.s.encode()].concat()
 }
 
 #[wasm_bindgen]
 pub fn verify(msg: &[u8], signature: &[u8], public_key: &[u8]) -> bool {
-        let sig = Sign::<BabyJubjubField> {
-            r: BabyJubjubPoint::decode(&signature[..32]),
-            s: BabyJubjubField::decode(&signature[32..])
-        };
-        let pk = BabyJubjubPoint::decode(public_key);
-        BabyJubjub::verify(msg, sig, pk)
+    let sig = Sign::<BabyJubjubField> {
+        r: BabyJubjubPoint::decode(&signature[..32]),
+        s: BabyJubjubField::decode(&signature[32..]),
+    };
+    let pk = BabyJubjubPoint::decode(public_key);
+    BabyJubjub::verify(msg, sig, pk)
 }
 
 #[wasm_bindgen]
 pub fn babyjubjub_keypair_from_seed(seed: &[u8]) -> Vec<u8> {
-        let secret_key = BabyJubjubField::new(
-            BigInt::parse_bytes(
-                b"0001020304050607080900010203040506070809000102030405060708090001",
-                16,
-            )
-            .unwrap(),
-        );
-        let public_key = BabyJubjub::pubkey_from_secretkey(&secret_key);
-        [public_key.encode(), secret_key.encode()].concat()
+    let secret_key = BabyJubjubField::new(
+        BigInt::parse_bytes(
+            b"0001020304050607080900010203040506070809000102030405060708090001",
+            16,
+        )
+        .unwrap(),
+    );
+    let public_key = BabyJubjub::pubkey_from_secretkey(&secret_key);
+    [public_key.encode(), secret_key.encode()].concat()
 }
-
 
 #[cfg(test)]
 mod tests {

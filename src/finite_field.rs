@@ -32,18 +32,18 @@ fn legendre_symbol(a: &BigInt, q: &BigInt) -> i32 {
 }
 
 pub trait FiniteField:
-Add<Output = Self>
-+ Sub<Output = Self>
-+ Mul<Output = Self>
-+ Div<Output = Self>
-+ Rem<Output = Self>
-+ PartialOrd
-+ Sized
-+ Clone
-+ Eq
-+ PartialEq
-+ std::fmt::Debug
-+ Order
+    Add<Output = Self>
+    + Sub<Output = Self>
+    + Mul<Output = Self>
+    + Div<Output = Self>
+    + Rem<Output = Self>
+    + PartialOrd
+    + Sized
+    + Clone
+    + Eq
+    + PartialEq
+    + std::fmt::Debug
+    + Order
 {
     fn new(n: BigInt) -> Self;
     fn to_bn(&self) -> BigInt;
