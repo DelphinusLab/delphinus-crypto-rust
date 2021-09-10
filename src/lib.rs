@@ -1,6 +1,6 @@
 use num_bigint::{BigInt, ToBigInt};
 use sha2::{Digest, Sha512};
-use std::ops::{Add, Mul};
+use std::ops::Add;
 use wasm_bindgen::prelude::*;
 
 mod babyjubjub;
@@ -84,16 +84,16 @@ impl Curve<BabyJubjubField> for BabyJubjubPoint {
         Point::<BabyJubjubField> { x, y }
     }
 
-    fn mul_scalar(self, k: BigInt) -> Self {
-        if k == bn_0() {
+    fn mul(&self, k: &BigInt) -> Self {
+        if *k == bn_0() {
             BabyJubjubPoint::get_origin()
-        } else if k == bn_1() {
-            self
+        } else if *k == bn_1() {
+            (*self).clone()
         } else if k.clone() % bn_2() == bn_1() {
-            self.clone() + self.mul_scalar(k - 1)
+            self.clone() + self.mul(&(k - 1))
         } else {
-            let p = self.clone() + self;
-            p.mul_scalar(k >> 1)
+            let p = self.clone() + self.clone();
+            p.mul(&(k >> 1))
         }
     }
 }
@@ -126,26 +126,9 @@ impl Add for BabyJubjubPoint {
     }
 }
 
-impl Mul<BabyJubjubField> for BabyJubjubPoint {
-    type Output = BabyJubjubPoint;
-
-    fn mul(self, k: BabyJubjubField) -> Self {
-        if k.clone().v == bn_0() {
-            BabyJubjubPoint::get_origin()
-        } else if k.clone().v == bn_1() {
-            self.clone()
-        } else if k.clone().v % bn_2() == bn_1() {
-            self.clone() + self.clone().mul(BabyJubjubField::new(k.clone().v - 1))
-        } else {
-            let p = self.clone() + self.clone();
-            p.mul(BabyJubjubField::new(k.clone().v / 2))
-        }
-    }
-}
-
 trait EllipticCurve<T> {}
 
-type BabyJubjub = EllipticCurve<BabyJubjubPoint>;
+type BabyJubjub = dyn EllipticCurve<BabyJubjubPoint>;
 
 impl EDDSA<BabyJubjubField, BabyJubjubPoint> for BabyJubjub {
     fn secret_scalar(secret_key: &BabyJubjubField) -> BigInt {
@@ -165,12 +148,10 @@ impl EDDSA<BabyJubjubField, BabyJubjubPoint> for BabyJubjub {
     }
 
     // https://datatracker.ietf.org/doc/html/rfc8032#section-5.1.5
-    fn pubkey_from_secretkey(
-        secret_key: &BabyJubjubField,
-    ) -> <Point<BabyJubjubField> as Mul<BabyJubjubField>>::Output {
+    fn pubkey_from_secretkey(secret_key: &BabyJubjubField) -> Point<BabyJubjubField> {
         let scalar_key = Self::secret_scalar(secret_key);
 
-        BabyJubjubPoint::get_basepoint() * BabyJubjubField::new(scalar_key)
+        BabyJubjubPoint::get_basepoint().mul(&scalar_key)
     }
 
     fn verify(data: &[u8], signature: Sign<BabyJubjubField>, public_key: BabyJubjubPoint) -> bool {
@@ -181,8 +162,8 @@ impl EDDSA<BabyJubjubField, BabyJubjubPoint> for BabyJubjub {
         );
         let concat = BigInt::from_bytes_le(num_bigint::Sign::Plus, h.as_slice());
 
-        let l = BabyJubjubPoint::get_basepoint() * signature.s;
-        let r1 = public_key.mul_scalar(8 * concat);
+        let l = BabyJubjubPoint::get_basepoint().mul(&signature.s.v);
+        let r1 = public_key.mul(&(8 * concat));
         let r2 = signature.r + r1.clone();
 
         l == r2
@@ -205,18 +186,15 @@ impl EDDSA<BabyJubjubField, BabyJubjubPoint> for BabyJubjub {
         let r = BigInt::from_bytes_le(num_bigint::Sign::Plus, r.as_slice())
             % BabyJubjubField::suborder().v;
 
-        let R = BabyJubjubPoint::get_basepoint() * BabyJubjubField::new(r.clone());
+        let sig_r = BabyJubjubPoint::get_basepoint().mul(&r);
 
-        let concat = [&R.encode(), &pk.encode(), data].concat();
+        let concat = [&sig_r.encode(), &pk.encode(), data].concat();
         let hash_concat = Self::hash(concat.as_slice());
         let concat = BigInt::from_bytes_le(num_bigint::Sign::Plus, hash_concat.as_slice());
 
-        let S =
+        let sig_s =
             BabyJubjubField::new((r.clone() + concat.clone() * s) % BabyJubjubField::suborder().v);
-        Sign::<BabyJubjubField> {
-            r: R.clone(),
-            s: S.clone(),
-        }
+        Sign::<BabyJubjubField> { r: sig_r, s: sig_s }
     }
 
     fn hash(data: &[u8]) -> Vec<u8> {
@@ -243,7 +221,7 @@ pub fn verify(msg: &[u8], signature: &[u8], public_key: &[u8]) -> bool {
 }
 
 #[wasm_bindgen]
-pub fn babyjubjub_keypair_from_seed(seed: &[u8]) -> Vec<u8> {
+pub fn babyjubjub_keypair_from_seed(_seed: &[u8]) -> Vec<u8> {
     let secret_key = BabyJubjubField::new(
         BigInt::parse_bytes(
             b"0001020304050607080900010203040506070809000102030405060708090001",
@@ -317,34 +295,30 @@ mod tests {
             .unwrap(),
         );
 
-        let z = BabyJubjubField::new(BigInt::parse_bytes(b"0", 10).unwrap());
-        let o = BabyJubjubField::new(BigInt::parse_bytes(b"1", 10).unwrap());
-        assert_eq!(p1.clone().mul(z), BabyJubjubPoint::get_origin().clone());
-        assert_eq!(p1.clone().mul(o), p1.clone());
+        assert_eq!(
+            p1.mul(&0.to_bigint().unwrap()),
+            BabyJubjubPoint::get_origin().clone()
+        );
+        assert_eq!(p1.mul(&1.to_bigint().unwrap()), p1.clone());
         assert_eq!(
             p1.clone() + p1.clone(),
-            p1.clone()
-                .mul(BabyJubjubField::new(BigInt::parse_bytes(b"2", 10).unwrap()))
+            p1.mul(&BigInt::parse_bytes(b"2", 10).unwrap())
         );
         assert_eq!(
             p1.clone() + p1.clone() + p1.clone(),
-            p1.clone()
-                .mul(BabyJubjubField::new(BigInt::parse_bytes(b"3", 10).unwrap()))
+            p1.mul(&BigInt::parse_bytes(b"3", 10).unwrap())
         );
         assert_eq!(
             p1.clone() + p1.clone() + p1.clone() + p1.clone(),
-            p1.clone()
-                .mul(BabyJubjubField::new(BigInt::parse_bytes(b"4", 10).unwrap()))
+            p1.mul(&BigInt::parse_bytes(b"4", 10).unwrap())
         );
         assert_eq!(
             p1.clone() + p1.clone() + p1.clone() + p1.clone() + p1.clone(),
-            p1.clone()
-                .mul(BabyJubjubField::new(BigInt::parse_bytes(b"5", 10).unwrap()))
+            p1.mul(&BigInt::parse_bytes(b"5", 10).unwrap())
         );
         assert_eq!(
             p1.clone() + p1.clone() + p1.clone() + p1.clone() + p1.clone() + p1.clone(),
-            p1.clone()
-                .mul(BabyJubjubField::new(BigInt::parse_bytes(b"6", 10).unwrap()))
+            p1.mul(&BigInt::parse_bytes(b"6", 10).unwrap())
         );
         assert_eq!(
             p1.clone()
@@ -354,8 +328,7 @@ mod tests {
                 + p1.clone()
                 + p1.clone()
                 + p1.clone(),
-            p1.clone()
-                .mul(BabyJubjubField::new(BigInt::parse_bytes(b"7", 10).unwrap()))
+            p1.mul(&BigInt::parse_bytes(b"7", 10).unwrap())
         );
         assert_eq!(
             p1.clone()
@@ -366,16 +339,15 @@ mod tests {
                 + p1.clone()
                 + p1.clone()
                 + p1.clone(),
-            p1.clone()
-                .mul(BabyJubjubField::new(BigInt::parse_bytes(b"8", 10).unwrap()))
+            p1.mul(&BigInt::parse_bytes(b"8", 10).unwrap())
         );
-        assert_eq!(p1.clone().mul(l.clone()), p2.clone());
+        assert_eq!(p1.clone().mul(&l.v), p2.clone());
 
         let p = Point::<BabyJubjubField> {
             x: BabyJubjubField::new(BigInt::parse_bytes(b"17777552123799933955779906779655732241715742912184938656739573121738514868268", 10).unwrap()),
             y: BabyJubjubField::new(BigInt::parse_bytes(b"2626589144620713026669568689430873010625803728049924121243784502389097019475", 10).unwrap())
         };
-        let p = p * BabyJubjubField::new(3.to_bigint().unwrap());
+        let p = p.mul(&3.to_bigint().unwrap());
         assert_eq!(p.x, BabyJubjubField::new(BigInt::parse_bytes(b"19372461775513343691590086534037741906533799473648040012278229434133483800898", 10).unwrap()));
         assert_eq!(
             p.y,
@@ -396,7 +368,7 @@ mod tests {
             .unwrap(),
         );
         let p = p1.clone();
-        let p = p * r;
+        let p = p.mul(&r.v);
         assert_eq!(
             p.x,
             BabyJubjubField::new(
@@ -428,7 +400,7 @@ mod tests {
         };
         let scalar = 8.to_bigint().unwrap() * BigInt::parse_bytes(b"3555222839185221705021491425814961952405519748427783402552617991682219862759662171839441019252996282066424942781038390250059889384698141532893051346697349", 10).unwrap();
 
-        assert_eq!(p.mul_scalar(scalar), e);
+        assert_eq!(p.mul(&scalar), e);
     }
 
     #[test]

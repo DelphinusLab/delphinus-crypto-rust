@@ -1,1 +1,1 @@
-wasm-pack build --target nodejs
+wasm-pack build --release --target nodejs
