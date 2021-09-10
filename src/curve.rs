@@ -14,5 +14,6 @@ pub trait Curve<T>: Add<Output = Self> + Mul<T> + Sized {
     fn get_basepoint() -> Point<T>;
     fn get_order() -> T;
     fn encode(&self) -> [u8; 32];
+    fn decode(encode: &[u8]) -> Self;
     fn mul_scalar(self, k: BigInt) -> Self;
 }

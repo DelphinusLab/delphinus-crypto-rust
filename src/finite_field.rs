@@ -1,4 +1,5 @@
-use num_bigint::{BigInt, RandBigInt, Sign};
+use num_bigint::{BigInt, RandBigInt, Sign, ToBigInt};
+use num_traits::{One, Zero};
 use std::ops::{Add, Div, Mul, Rem, Sub};
 
 pub fn bn_0() -> BigInt {
@@ -16,22 +17,84 @@ pub trait Order {
     fn suborder() -> Self;
 }
 
+pub fn modulus(a: &BigInt, m: &BigInt) -> BigInt {
+    ((a % m) + m) % m
+}
+
+fn legendre_symbol(a: &BigInt, q: &BigInt) -> i32 {
+    // returns 1 if has a square root modulo q
+    let one: BigInt = One::one();
+    let ls: BigInt = a.modpow(&((q - &one) >> 1), &q);
+    if ls == q - one {
+        return -1;
+    }
+    1
+}
+
 pub trait FiniteField:
-    Add<Output = Self>
-    + Sub<Output = Self>
-    + Mul<Output = Self>
-    + Div<Output = Self>
-    + Rem<Output = Self>
-    + PartialOrd
-    + Sized
-    + Clone
-    + Eq
-    + PartialEq
-    + std::fmt::Debug
-    + Order
+Add<Output = Self>
++ Sub<Output = Self>
++ Mul<Output = Self>
++ Div<Output = Self>
++ Rem<Output = Self>
++ PartialOrd
++ Sized
++ Clone
++ Eq
++ PartialEq
++ std::fmt::Debug
++ Order
 {
     fn new(n: BigInt) -> Self;
     fn to_bn(&self) -> BigInt;
+
+    fn sqrt(&self) -> Result<Self, String> {
+        let a = &self.to_bn();
+        let q = &Self::order().to_bn();
+        let zero: BigInt = Zero::zero();
+        let one: BigInt = One::one();
+        if legendre_symbol(&a, q) != 1 || a == &zero || q == &2.to_bigint().unwrap() {
+            return Err("not a mod p square".to_string());
+        } else if q % 4.to_bigint().unwrap() == 3.to_bigint().unwrap() {
+            let r = a.modpow(&((q + one) / 4), &q);
+            return Ok(Self::new(r));
+        }
+        let mut s = q - &one;
+        let mut e: BigInt = Zero::zero();
+        while &s % 2 == zero {
+            s >>= 1;
+            e += &one;
+        }
+
+        let mut n: BigInt = 2.to_bigint().unwrap();
+        while legendre_symbol(&n, q) != -1 {
+            n = &n + &one;
+        }
+
+        let mut y = a.modpow(&((&s + &one) >> 1), q);
+        let mut b = a.modpow(&s, q);
+        let mut g = n.modpow(&s, q);
+        let mut r = e;
+
+        loop {
+            let mut t = b.clone();
+            let mut m: BigInt = Zero::zero();
+            while t != one {
+                t = modulus(&(&t * &t), q);
+                m += &one;
+            }
+
+            if m == zero {
+                return Ok(Self::new(y));
+            }
+
+            t = g.modpow(&(2.to_bigint().unwrap().modpow(&(&r - &m - 1), q)), q);
+            g = g.modpow(&(2.to_bigint().unwrap().modpow(&(r - &m), q)), q);
+            y = modulus(&(y * t), q);
+            b = modulus(&(b * &g), q);
+            r = m.clone();
+        }
+    }
 
     // https://en.wikipedia.org/wiki/Extended_Euclidean_algorithm#Polynomial_extended_Euclidean_algorithm
     fn inv(&self) -> Self {
@@ -68,6 +131,7 @@ pub trait Random {
 
 pub trait Encode {
     fn encode(&self) -> [u8; 32];
+    fn decode(encode: &[u8]) -> Self;
     fn to_array(&self) -> [u8; 32];
 }
 
@@ -83,6 +147,12 @@ impl Encode for Field {
         assert!(s == Sign::Plus);
         to_bytes[0..v.len()].copy_from_slice(v.as_slice());
         to_bytes
+    }
+
+    fn decode(encode: &[u8]) -> Self {
+        Field {
+            v: BigInt::from_bytes_le(Sign::Plus, encode),
+        }
     }
 
     fn to_array(&self) -> [u8; 32] {

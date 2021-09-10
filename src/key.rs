@@ -3,6 +3,7 @@ pub use crate::finite_field::{bn_0, bn_1, bn_2, Encode, FiniteField, Random};
 use num_bigint::BigInt;
 use std::ops::Mul;
 
+#[derive(Debug)]
 pub struct Sign<T> {
     pub r: Point<T>,
     pub s: T,
