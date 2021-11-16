@@ -1,130 +1,21 @@
-use num_bigint::{BigInt, ToBigInt};
+#[macro_use]
+extern crate lazy_static;
+
+use num_bigint::BigInt;
 use sha2::{Digest, Sha512};
-use std::ops::Add;
 use wasm_bindgen::prelude::*;
 
 mod babyjubjub;
+mod babyjubjub_point;
 mod curve;
-mod finite_field;
 mod key;
+mod prime_field;
 
 pub use crate::babyjubjub::BabyJubjubField;
+pub use crate::babyjubjub_point::BabyJubjubPoint;
 pub use crate::curve::{Curve, Point};
-pub use crate::finite_field::{bn_0, bn_1, bn_2, Encode, Field, FiniteField, Order};
 pub use crate::key::{Sign, EDDSA};
-
-type BabyJubjubPoint = Point<BabyJubjubField>;
-
-impl PartialEq for BabyJubjubPoint {
-    fn eq(&self, other: &Self) -> bool {
-        self.x == other.x && self.y == other.y
-    }
-}
-
-impl Curve<BabyJubjubField> for BabyJubjubPoint {
-    fn get_a() -> BabyJubjubField {
-        BabyJubjubField::new(BigInt::parse_bytes(b"168700", 10).unwrap())
-    }
-
-    fn get_d() -> BabyJubjubField {
-        BabyJubjubField::new(BigInt::parse_bytes(b"168696", 10).unwrap())
-    }
-
-    fn get_origin() -> Point<BabyJubjubField> {
-        Point::<BabyJubjubField> {
-            x: BabyJubjubField::new(bn_0()),
-            y: BabyJubjubField::new(bn_1()),
-        }
-    }
-
-    fn get_basepoint() -> Point<BabyJubjubField> {
-        Point::<BabyJubjubField> {
-            x: BabyJubjubField::new(BigInt::parse_bytes(b"5299619240641551281634865583518297030282874472190772894086521144482721001553", 10).unwrap()),
-            y: BabyJubjubField::new(BigInt::parse_bytes(b"16950150798460657717958625567821834550301663161624707787222815936182638968203", 10).unwrap())
-        }
-    }
-
-    fn get_order() -> BabyJubjubField {
-        BabyJubjubField::new(
-            BigInt::parse_bytes(
-                b"21888242871839275222246405745257275088614511777268538073601725287587578984328",
-                10,
-            )
-            .unwrap(),
-        )
-    }
-
-    fn encode(&self) -> [u8; 32] {
-        let mut encode = self.y.encode();
-        if self.x.v > BabyJubjubField::order().v / 2 {
-            encode[31] |= 0x80;
-        }
-        encode
-        // BabyJubjubField::new((self.x.clone().v & bn_1() << 255) | self.y.clone().v).encode()
-    }
-
-    fn decode(encode: &[u8]) -> Self {
-        let mut sign = false;
-        let mut y = [0; 32];
-        y[..].copy_from_slice(encode);
-        if y[31] & 0x80 == 0x80 {
-            sign = true;
-        }
-        y[31] &= 0x7f;
-        let y = BabyJubjubField::decode(&y);
-        let numerator = BabyJubjubField::new(bn_1()) - y.clone() * y.clone();
-        let denominator = (Self::get_a() - Self::get_d() * y.clone() * y.clone()).inv();
-        let mut x = (numerator * denominator).sqrt().unwrap().v;
-        if (sign && (x <= BabyJubjubField::order().v / 2))
-            || (!sign && (x > BabyJubjubField::order().v / 2))
-        {
-            x *= -(1.to_bigint().unwrap());
-        }
-        let x = BabyJubjubField::new(x);
-        Point::<BabyJubjubField> { x, y }
-    }
-
-    fn mul(&self, k: &BigInt) -> Self {
-        if *k == bn_0() {
-            BabyJubjubPoint::get_origin()
-        } else if *k == bn_1() {
-            (*self).clone()
-        } else if k.clone() % bn_2() == bn_1() {
-            self.clone() + self.mul(&(k - 1))
-        } else {
-            let p = self.clone() + self.clone();
-            p.mul(&(k >> 1))
-        }
-    }
-}
-
-impl Add for BabyJubjubPoint {
-    type Output = BabyJubjubPoint;
-
-    fn add(self, other: Self) -> Self::Output {
-        let x1 = self.x;
-        let y1 = self.y;
-        let x2 = other.x.clone();
-        let y2 = other.y.clone();
-        let a = Self::get_a();
-        let d = Self::get_d();
-        let one: BabyJubjubField = BabyJubjubField::new(bn_1());
-
-        let tmp = d.clone() * x1.clone() * x2.clone() * y1.clone() * y2.clone();
-
-        // ref: https://eips.ethereum.org/EIPS/eip-2494
-        //   x3 = (x1*y2 + y1*x2)/(1 + d*x1*x2*y1*y2)
-        //   y3 = (y1*y2 - a*x1*x2)/(1 - d*x1*x2*y1*y2)
-        // let tmp1 = (y1.clone() * y2.clone() - a.clone() * x1.clone() * x2.clone());
-        // let tmp2 = (one.clone() - tmp.clone());
-        // let tmp3 = tmp1.clone() / tmp2.clone();
-        Self {
-            x: (x1.clone() * y2.clone() + y1.clone() * x2.clone()) / (one.clone() + tmp.clone()),
-            y: (y1.clone() * y2.clone() - a * x1.clone() * x2.clone())
-                / (one.clone() - tmp.clone()),
-        }
-    }
-}
+pub use crate::prime_field::{Encode, Field, Order, PrimeField, BN_0, BN_1, BN_2};
 
 trait EllipticCurve<T> {}
 
@@ -151,7 +42,7 @@ impl EDDSA<BabyJubjubField, BabyJubjubPoint> for BabyJubjub {
     fn pubkey_from_secretkey(secret_key: &BabyJubjubField) -> Point<BabyJubjubField> {
         let scalar_key = Self::secret_scalar(secret_key);
 
-        BabyJubjubPoint::get_basepoint().mul(&scalar_key)
+        BabyJubjubPoint::get_basepoint() * scalar_key
     }
 
     fn verify(data: &[u8], signature: Sign<BabyJubjubField>, public_key: BabyJubjubPoint) -> bool {
@@ -162,9 +53,9 @@ impl EDDSA<BabyJubjubField, BabyJubjubPoint> for BabyJubjub {
         );
         let concat = BigInt::from_bytes_le(num_bigint::Sign::Plus, h.as_slice());
 
-        let l = BabyJubjubPoint::get_basepoint().mul(&signature.s.v);
-        let r1 = public_key.mul(&(8 * concat));
-        let r2 = signature.r + r1.clone();
+        let l = BabyJubjubPoint::get_basepoint() * &signature.s.v;
+        let r1 = public_key * (8 * concat);
+        let r2 = signature.r + r1;
 
         l == r2
     }
@@ -184,16 +75,15 @@ impl EDDSA<BabyJubjubField, BabyJubjubPoint> for BabyJubjub {
 
         let r = Self::hash(&[&h[32..], data].concat().as_slice());
         let r = BigInt::from_bytes_le(num_bigint::Sign::Plus, r.as_slice())
-            % BabyJubjubField::suborder().v;
+            % BabyJubjubField::suborder();
 
-        let sig_r = BabyJubjubPoint::get_basepoint().mul(&r);
+        let sig_r = BabyJubjubPoint::get_basepoint() * &r;
 
         let concat = [&sig_r.encode(), &pk.encode(), data].concat();
         let hash_concat = Self::hash(concat.as_slice());
         let concat = BigInt::from_bytes_le(num_bigint::Sign::Plus, hash_concat.as_slice());
 
-        let sig_s =
-            BabyJubjubField::new((r.clone() + concat.clone() * s) % BabyJubjubField::suborder().v);
+        let sig_s = BabyJubjubField::new(&((r + concat * s) % BabyJubjubField::suborder()));
         Sign::<BabyJubjubField> { r: sig_r, s: sig_s }
     }
 
@@ -212,56 +102,52 @@ pub fn sign(msg: &[u8], secret_key: &[u8]) -> Vec<u8> {
 
 #[wasm_bindgen]
 pub fn verify(msg: &[u8], signature: &[u8], public_key: &[u8]) -> bool {
-    let sig = Sign::<BabyJubjubField> {
-        r: BabyJubjubPoint::decode(&signature[..32]),
-        s: BabyJubjubField::decode(&signature[32..]),
-    };
+    let r = BabyJubjubPoint::decode(&signature[..32]);
+    let s = BabyJubjubField::decode(&signature[32..]);
     let pk = BabyJubjubPoint::decode(public_key);
-    BabyJubjub::verify(msg, sig, pk)
-}
 
-#[wasm_bindgen]
-pub fn babyjubjub_keypair_from_seed(_seed: &[u8]) -> Vec<u8> {
-    let secret_key = BabyJubjubField::new(
-        BigInt::parse_bytes(
-            b"0001020304050607080900010203040506070809000102030405060708090001",
-            16,
-        )
-        .unwrap(),
-    );
-    let public_key = BabyJubjub::pubkey_from_secretkey(&secret_key);
-    [public_key.encode(), secret_key.encode()].concat()
+    match (r, pk) {
+        (Ok(r), Ok(pk)) => {
+            let sig = Sign::<BabyJubjubField> {
+                r,
+                s,
+            };
+            BabyJubjub::verify(msg, sig, pk)
+        },
+        _ => false
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use num_bigint::ToBigInt;
 
     #[test]
     fn babyjubjub_point_add() {
         let p1 = Point::<BabyJubjubField> {
-            x: BabyJubjubField::new(BigInt::parse_bytes(b"17777552123799933955779906779655732241715742912184938656739573121738514868268", 10).unwrap()),
-            y: BabyJubjubField::new(BigInt::parse_bytes(b"2626589144620713026669568689430873010625803728049924121243784502389097019475", 10).unwrap())
+            x: BabyJubjubField::new(&BigInt::parse_bytes(b"17777552123799933955779906779655732241715742912184938656739573121738514868268", 10).unwrap()),
+            y: BabyJubjubField::new(&BigInt::parse_bytes(b"2626589144620713026669568689430873010625803728049924121243784502389097019475", 10).unwrap())
         };
         let p2 = Point::<BabyJubjubField> {
-            x: BabyJubjubField::new(BigInt::parse_bytes(b"16540640123574156134436876038791482806971768689494387082833631921987005038935", 10).unwrap()),
-            y: BabyJubjubField::new(BigInt::parse_bytes(b"20819045374670962167435360035096875258406992893633759881276124905556507972311", 10).unwrap())
+            x: BabyJubjubField::new(&BigInt::parse_bytes(b"16540640123574156134436876038791482806971768689494387082833631921987005038935", 10).unwrap()),
+            y: BabyJubjubField::new(&BigInt::parse_bytes(b"20819045374670962167435360035096875258406992893633759881276124905556507972311", 10).unwrap())
         };
         let p3 = Point::<BabyJubjubField> {
-            x: BabyJubjubField::new(BigInt::parse_bytes(b"7916061937171219682591368294088513039687205273691143098332585753343424131937", 10).unwrap()),
-            y: BabyJubjubField::new(BigInt::parse_bytes(b"14035240266687799601661095864649209771790948434046947201833777492504781204499", 10).unwrap())
+            x: BabyJubjubField::new(&BigInt::parse_bytes(b"7916061937171219682591368294088513039687205273691143098332585753343424131937", 10).unwrap()),
+            y: BabyJubjubField::new(&BigInt::parse_bytes(b"14035240266687799601661095864649209771790948434046947201833777492504781204499", 10).unwrap())
         };
 
         let p1_double = Point::<BabyJubjubField> {
             x: BabyJubjubField::new(
-                BigInt::parse_bytes(
+                &BigInt::parse_bytes(
                     b"6890855772600357754907169075114257697580319025794532037257385534741338397365",
                     10,
                 )
                 .unwrap(),
             ),
             y: BabyJubjubField::new(
-                BigInt::parse_bytes(
+                &BigInt::parse_bytes(
                     b"4338620300185947561074059802482547481416142213883829469920100239455078257889",
                     10,
                 )
@@ -270,8 +156,8 @@ mod tests {
         };
 
         let id = Point::<BabyJubjubField> {
-            x: BabyJubjubField::new(BigInt::parse_bytes(b"0", 10).unwrap()),
-            y: BabyJubjubField::new(BigInt::parse_bytes(b"1", 10).unwrap()),
+            x: BabyJubjubField::new(&BigInt::parse_bytes(b"0", 10).unwrap()),
+            y: BabyJubjubField::new(&BigInt::parse_bytes(b"1", 10).unwrap()),
         };
 
         assert_eq!(p1.clone() + p2, p3);
@@ -284,75 +170,36 @@ mod tests {
         let p1 = Point::<BabyJubjubField>::get_basepoint();
 
         let p2 = Point::<BabyJubjubField> {
-            x: BabyJubjubField::new(BigInt::parse_bytes(b"0", 10).unwrap()),
-            y: BabyJubjubField::new(BigInt::parse_bytes(b"1", 10).unwrap()),
+            x: BabyJubjubField::new(&BigInt::parse_bytes(b"0", 10).unwrap()),
+            y: BabyJubjubField::new(&BigInt::parse_bytes(b"1", 10).unwrap()),
         };
         let l = BabyJubjubField::new(
-            BigInt::parse_bytes(
+            &BigInt::parse_bytes(
                 b"2736030358979909402780800718157159386076813972158567259200215660948447373041",
                 10,
             )
             .unwrap(),
         );
 
-        assert_eq!(
-            p1.mul(&0.to_bigint().unwrap()),
-            BabyJubjubPoint::get_origin().clone()
-        );
-        assert_eq!(p1.mul(&1.to_bigint().unwrap()), p1.clone());
-        assert_eq!(
-            p1.clone() + p1.clone(),
-            p1.mul(&BigInt::parse_bytes(b"2", 10).unwrap())
-        );
-        assert_eq!(
-            p1.clone() + p1.clone() + p1.clone(),
-            p1.mul(&BigInt::parse_bytes(b"3", 10).unwrap())
-        );
-        assert_eq!(
-            p1.clone() + p1.clone() + p1.clone() + p1.clone(),
-            p1.mul(&BigInt::parse_bytes(b"4", 10).unwrap())
-        );
-        assert_eq!(
-            p1.clone() + p1.clone() + p1.clone() + p1.clone() + p1.clone(),
-            p1.mul(&BigInt::parse_bytes(b"5", 10).unwrap())
-        );
-        assert_eq!(
-            p1.clone() + p1.clone() + p1.clone() + p1.clone() + p1.clone() + p1.clone(),
-            p1.mul(&BigInt::parse_bytes(b"6", 10).unwrap())
-        );
-        assert_eq!(
-            p1.clone()
-                + p1.clone()
-                + p1.clone()
-                + p1.clone()
-                + p1.clone()
-                + p1.clone()
-                + p1.clone(),
-            p1.mul(&BigInt::parse_bytes(b"7", 10).unwrap())
-        );
-        assert_eq!(
-            p1.clone()
-                + p1.clone()
-                + p1.clone()
-                + p1.clone()
-                + p1.clone()
-                + p1.clone()
-                + p1.clone()
-                + p1.clone(),
-            p1.mul(&BigInt::parse_bytes(b"8", 10).unwrap())
-        );
-        assert_eq!(p1.clone().mul(&l.v), p2.clone());
+        assert_eq!(p1 * 0.to_bigint().unwrap(), *BabyJubjubPoint::get_origin());
+        for i in 1..128 {
+            assert_eq!(
+                p1 * i.to_bigint().unwrap(),
+                p1 * (i - 1).to_bigint().unwrap() + p1
+            );
+        }
+        assert_eq!(p1 * &l.v, p2);
 
         let p = Point::<BabyJubjubField> {
-            x: BabyJubjubField::new(BigInt::parse_bytes(b"17777552123799933955779906779655732241715742912184938656739573121738514868268", 10).unwrap()),
-            y: BabyJubjubField::new(BigInt::parse_bytes(b"2626589144620713026669568689430873010625803728049924121243784502389097019475", 10).unwrap())
+            x: BabyJubjubField::new(&BigInt::parse_bytes(b"17777552123799933955779906779655732241715742912184938656739573121738514868268", 10).unwrap()),
+            y: BabyJubjubField::new(&BigInt::parse_bytes(b"2626589144620713026669568689430873010625803728049924121243784502389097019475", 10).unwrap())
         };
-        let p = p.mul(&3.to_bigint().unwrap());
-        assert_eq!(p.x, BabyJubjubField::new(BigInt::parse_bytes(b"19372461775513343691590086534037741906533799473648040012278229434133483800898", 10).unwrap()));
+        let p = p * &3.to_bigint().unwrap();
+        assert_eq!(p.x, BabyJubjubField::new(&BigInt::parse_bytes(b"19372461775513343691590086534037741906533799473648040012278229434133483800898", 10).unwrap()));
         assert_eq!(
             p.y,
             BabyJubjubField::new(
-                BigInt::parse_bytes(
+                &BigInt::parse_bytes(
                     b"9458658722007214007257525444427903161243386465067105737478306991484593958249",
                     10
                 )
@@ -361,18 +208,18 @@ mod tests {
         );
 
         let r = BabyJubjubField::new(
-            BigInt::parse_bytes(
+            &BigInt::parse_bytes(
                 b"998509002261817064039893525009363315223455691288800741227950990424097427109",
                 10,
             )
             .unwrap(),
         );
         let p = p1.clone();
-        let p = p.mul(&r.v);
+        let p = p * &r.v;
         assert_eq!(
             p.x,
             BabyJubjubField::new(
-                BigInt::parse_bytes(
+                &BigInt::parse_bytes(
                     b"192b4e51adf302c8139d356d0e08e2404b5ace440ef41fc78f5c4f2428df0765",
                     16
                 )
@@ -382,7 +229,7 @@ mod tests {
         assert_eq!(
             p.y,
             BabyJubjubField::new(
-                BigInt::parse_bytes(
+                &BigInt::parse_bytes(
                     b"2202bebcf57b820863e0acc88970b6ca7d987a0d513c2ddeb42e3f5d31b4eddf",
                     16
                 )
@@ -391,21 +238,21 @@ mod tests {
         );
 
         let p = Point::<BabyJubjubField> {
-            x: BabyJubjubField::new(BigInt::parse_bytes(b"13277427435165878497778222415993513565335242147425444199013288855685581939618", 10).unwrap()),
-            y: BabyJubjubField::new(BigInt::parse_bytes(b"13622229784656158136036771217484571176836296686641868549125388198837476602820", 10).unwrap()),
+            x: BabyJubjubField::new(&BigInt::parse_bytes(b"13277427435165878497778222415993513565335242147425444199013288855685581939618", 10).unwrap()),
+            y: BabyJubjubField::new(&BigInt::parse_bytes(b"13622229784656158136036771217484571176836296686641868549125388198837476602820", 10).unwrap()),
         };
         let e = Point::<BabyJubjubField> {
-            x: BabyJubjubField::new(BigInt::parse_bytes(b"19785544666114077538072763147637156577218052709759168023462664489457396832522", 10).unwrap()),
-            y: BabyJubjubField::new(BigInt::parse_bytes(b"16614218219728383555739033070527024479890982726267810004762494735367721033618", 10).unwrap()),
+            x: BabyJubjubField::new(&BigInt::parse_bytes(b"19785544666114077538072763147637156577218052709759168023462664489457396832522", 10).unwrap()),
+            y: BabyJubjubField::new(&BigInt::parse_bytes(b"16614218219728383555739033070527024479890982726267810004762494735367721033618", 10).unwrap()),
         };
         let scalar = 8.to_bigint().unwrap() * BigInt::parse_bytes(b"3555222839185221705021491425814961952405519748427783402552617991682219862759662171839441019252996282066424942781038390250059889384698141532893051346697349", 10).unwrap();
 
-        assert_eq!(p.mul(&scalar), e);
+        assert_eq!(p * &scalar, e);
     }
 
     #[test]
-    fn test_signal_verify() {
-        let secret_key = BabyJubjubField::new(BigInt::parse_bytes(b"2", 10).unwrap());
+    fn test_signature_verify() {
+        let secret_key = BabyJubjubField::new(&2.to_bigint().unwrap());
         let public_key = BabyJubjub::pubkey_from_secretkey(&secret_key);
         let msg = [1 as u8; 3];
 
@@ -415,22 +262,40 @@ mod tests {
     }
 
     #[test]
+    fn test_static_signature_verify() {
+        let public_key = Point {
+            x: BabyJubjubField::new(&BigInt::parse_bytes(b"14892791833762263886234636507872314521084676508196912004152242841911931661424", 10).unwrap()),
+            y: BabyJubjubField::new(&BigInt::parse_bytes(b"21831447259405194377077378715948592512280813186310644971119559122358560586226", 10).unwrap())
+        };
+        let msg = [1 as u8; 3];
+        let sign = Sign {
+            r: Point {
+                x: BabyJubjubField::new(&BigInt::parse_bytes(b"6951896296802418001876774812926845042387870916354641321706660858295307410849", 10).unwrap()),
+                y: BabyJubjubField::new(&BigInt::parse_bytes(b"1863506874615199564830997222945358836801797315255884957817103833047232963276", 10).unwrap())
+            },
+            s: BabyJubjubField::new(&BigInt::parse_bytes(b"354115833829704020582647151893737935299449778213023942621219492737833751659", 10).unwrap())
+        };
+        let verify = BabyJubjub::verify(&msg, sign, public_key);
+        assert!(verify)
+    }
+
+    #[test]
     fn test_decode() {
         let secret_key = BabyJubjubField::new(
-            BigInt::parse_bytes(
+            &BigInt::parse_bytes(
                 b"0001020304050607080900010203040506070809000102030405060708090001",
                 16,
             )
             .unwrap(),
         );
         let public_key = BabyJubjub::pubkey_from_secretkey(&secret_key);
-        assert_eq!(BabyJubjubPoint::decode(&public_key.encode()), public_key);
+        assert_eq!(BabyJubjubPoint::decode(&public_key.encode()).unwrap(), public_key);
     }
 
     #[test]
     fn test_sv() {
         let secret_key = BabyJubjubField::new(
-            BigInt::parse_bytes(
+            &BigInt::parse_bytes(
                 b"0001020304050607080900010203040506070809000102030405060708090001",
                 16,
             )
