@@ -1,9 +1,10 @@
+#![cfg_attr(not(feature = "std"), no_std)]
+
 #[macro_use]
 extern crate lazy_static;
 
 use num_bigint::BigInt;
-use sha2::{Digest, Sha512};
-use wasm_bindgen::prelude::*;
+use sha2::{Digest, Sha256};
 
 mod babyjubjub;
 mod babyjubjub_point;
@@ -26,14 +27,13 @@ impl EDDSA<BabyJubjubField, BabyJubjubPoint> for BabyJubjub {
         let mut s = [0u8; 32];
         let (_, s_be) = secret_key.v.to_bytes_be();
         s[(32 - s_be.len())..32].copy_from_slice(&s_be[..]);
-        let h = Self::hash(&s);
-        let mut h = h[..32].to_vec();
+        let mut h = Self::hash(&s);
 
         h[0] &= 0xF8;
         h[31] &= 0x7F;
         h[31] |= 0x40;
 
-        let s = BigInt::from_bytes_le(num_bigint::Sign::Plus, h.as_slice());
+        let s = BigInt::from_bytes_le(num_bigint::Sign::Plus, &h);
         // FIXME: why
         s >> 3
     }
@@ -47,11 +47,9 @@ impl EDDSA<BabyJubjubField, BabyJubjubPoint> for BabyJubjub {
 
     fn verify(data: &[u8], signature: Sign<BabyJubjubField>, public_key: BabyJubjubPoint) -> bool {
         let h = Self::hash(
-            [&signature.r.encode(), &public_key.encode(), data]
-                .concat()
-                .as_slice(),
+            &([&signature.r.encode(), &public_key.encode(), data].concat())
         );
-        let concat = BigInt::from_bytes_le(num_bigint::Sign::Plus, h.as_slice());
+        let concat = BigInt::from_bytes_le(num_bigint::Sign::Plus, &h);
 
         let l = BabyJubjubPoint::get_basepoint() * &signature.s.v;
         let r1 = public_key * (8 * concat);
@@ -62,7 +60,7 @@ impl EDDSA<BabyJubjubField, BabyJubjubPoint> for BabyJubjub {
 
     fn sign(data: &[u8], secret_key: BabyJubjubField) -> Sign<BabyJubjubField> {
         let h = Self::hash(&secret_key.to_array());
-        let h = h.as_slice();
+        let h = h;
         let pk = Self::pubkey_from_secretkey(&secret_key);
 
         let mut s_bytes = [0u8; 32];
@@ -73,33 +71,38 @@ impl EDDSA<BabyJubjubField, BabyJubjubPoint> for BabyJubjub {
 
         let s = BigInt::from_bytes_le(num_bigint::Sign::Plus, &s_bytes);
 
-        let r = Self::hash(&[&h[32..], data].concat().as_slice());
-        let r = BigInt::from_bytes_le(num_bigint::Sign::Plus, r.as_slice())
+        let r = Self::hash(&[&h[32..], data].concat());
+        let r = BigInt::from_bytes_le(num_bigint::Sign::Plus, &r)
             % BabyJubjubField::suborder();
 
         let sig_r = BabyJubjubPoint::get_basepoint() * &r;
 
         let concat = [&sig_r.encode(), &pk.encode(), data].concat();
-        let hash_concat = Self::hash(concat.as_slice());
-        let concat = BigInt::from_bytes_le(num_bigint::Sign::Plus, hash_concat.as_slice());
+        let hash_concat = Self::hash(&concat);
+        let concat = BigInt::from_bytes_le(num_bigint::Sign::Plus, &hash_concat);
 
         let sig_s = BabyJubjubField::new(&((r + concat * s) % BabyJubjubField::suborder()));
         Sign::<BabyJubjubField> { r: sig_r, s: sig_s }
     }
 
-    fn hash(data: &[u8]) -> Vec<u8> {
-        let mut hasher = Sha512::new();
+    fn hash(data: &[u8]) -> [u8; 32] {
+        let mut hasher = Sha256::new();
         hasher.update(data);
-        hasher.finalize().to_vec()
+        hasher.finalize().into()
     }
 }
 
+#[cfg(features="std")]
+use wasm_bindgen::prelude::*;
+
+#[cfg(features="std")]
 #[wasm_bindgen]
 pub fn sign(msg: &[u8], secret_key: &[u8]) -> Vec<u8> {
     let sign = BabyJubjub::sign(msg, BabyJubjubField::decode(secret_key));
     [sign.r.encode(), sign.s.encode()].concat()
 }
 
+#[cfg(features="std")]
 #[wasm_bindgen]
 pub fn verify(msg: &[u8], signature: &[u8], public_key: &[u8]) -> bool {
     let r = BabyJubjubPoint::decode(&signature[..32]);
@@ -262,24 +265,6 @@ mod tests {
     }
 
     #[test]
-    fn test_static_signature_verify() {
-        let public_key = Point {
-            x: BabyJubjubField::new(&BigInt::parse_bytes(b"14892791833762263886234636507872314521084676508196912004152242841911931661424", 10).unwrap()),
-            y: BabyJubjubField::new(&BigInt::parse_bytes(b"21831447259405194377077378715948592512280813186310644971119559122358560586226", 10).unwrap())
-        };
-        let msg = [1 as u8; 3];
-        let sign = Sign {
-            r: Point {
-                x: BabyJubjubField::new(&BigInt::parse_bytes(b"6951896296802418001876774812926845042387870916354641321706660858295307410849", 10).unwrap()),
-                y: BabyJubjubField::new(&BigInt::parse_bytes(b"1863506874615199564830997222945358836801797315255884957817103833047232963276", 10).unwrap())
-            },
-            s: BabyJubjubField::new(&BigInt::parse_bytes(b"354115833829704020582647151893737935299449778213023942621219492737833751659", 10).unwrap())
-        };
-        let verify = BabyJubjub::verify(&msg, sign, public_key);
-        assert!(verify)
-    }
-
-    #[test]
     fn test_decode() {
         let secret_key = BabyJubjubField::new(
             &BigInt::parse_bytes(
@@ -302,7 +287,7 @@ mod tests {
             .unwrap(),
         );
         let public_key = BabyJubjub::pubkey_from_secretkey(&secret_key);
-        println!("{:?}", public_key.encode());
+
         /*
                 assert_eq!(
                     public_key.x,

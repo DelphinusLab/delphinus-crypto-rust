@@ -1,4 +1,5 @@
 use num_bigint::BigInt;
+use crate::prime_field::Error;
 
 #[derive(Clone, Debug)]
 pub struct Point<T> {
@@ -13,5 +14,5 @@ pub trait Curve<T>: Sized {
     fn get_basepoint() -> &'static Point<T>;
     fn get_order() -> &'static BigInt;
     fn encode(&self) -> [u8; 32];
-    fn decode(encode: &[u8]) -> Result<Self, String>;
+    fn decode(encode: &[u8]) -> Result<Self, Error>;
 }

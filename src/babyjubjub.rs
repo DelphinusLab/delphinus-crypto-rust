@@ -118,6 +118,7 @@ mod tests {
             assert_eq!((&a * &a).sqrt().unwrap() * (&a * &a).sqrt().unwrap(), &a * &a);
         }
 
+        #[cfg(feature="std")]
         for _ in 0..50 {
             let a = BabyJubjubField::get_random(&BN_1, BabyJubjubField::order());
             assert_eq!((&a * &a).sqrt().unwrap() * (&a * &a).sqrt().unwrap(), &a * &a);

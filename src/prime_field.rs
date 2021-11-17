@@ -1,4 +1,4 @@
-use num_bigint::{BigInt, Sign, RandBigInt, ToBigInt};
+use num_bigint::{BigInt, Sign, ToBigInt};
 use num_traits::{Zero, One};
 
 mod add;
@@ -31,25 +31,30 @@ fn legendre_symbol(a: &BigInt, q: &BigInt) -> i32 {
     }
 }
 
+#[derive(Eq, PartialEq, Clone, Debug, PartialOrd)]
+pub enum Error {
+    NotASqure
+}
+
 pub trait PrimeField:
     PartialOrd
     + Sized
     + Clone
     + Eq
     + PartialEq
-    + std::fmt::Debug
+    + sp_std::fmt::Debug
     + Order
 {
     fn new(n: &BigInt) -> Self;
     fn to_bn(&self) -> &BigInt;
 
-    fn sqrt(&self) -> Result<Self, String> {
+    fn sqrt(&self) -> Result<Self, Error> {
         let a = self.to_bn();
         let q = Self::order();
         let two: &BigInt = &BN_2;
 
         if legendre_symbol(&a, q) != 1 || a.is_zero() || q == two {
-            return Err("not a mod p square".to_string());
+            return Err(Error::NotASqure);
         }
 
         if q % 4 == 3.to_bigint().unwrap() {
@@ -121,10 +126,6 @@ pub trait PrimeField:
     }
 }
 
-pub trait Random {
-    fn get_random(l: &BigInt, r: &BigInt) -> Self;
-}
-
 pub trait Encode {
     fn encode(&self) -> [u8; 32];
     fn decode(encode: &[u8]) -> Self;
@@ -145,17 +146,6 @@ impl PrimeField for Field {
 
     fn to_bn(&self) -> &BigInt {
         &self.v
-    }
-}
-
-impl Random for Field {
-    // [l, r)
-    fn get_random(l: &BigInt, r: &BigInt) -> Self {
-        let mut rng = rand::thread_rng();
-
-        Self {
-            v: rng.gen_bigint_range(l, r),
-        }
     }
 }
 
@@ -180,5 +170,26 @@ impl Encode for Field {
 
         to_bytes[32 - v.len()..32].copy_from_slice(&v[..]);
         to_bytes
+    }
+}
+
+#[cfg(feature="std")]
+use num_bigint::RandBigInt;
+
+#[cfg(feature="std")]
+pub trait Random {
+    fn get_random(l: &BigInt, r: &BigInt) -> Self;
+}
+
+
+#[cfg(feature="std")]
+impl Random for Field {
+    // [l, r)
+    fn get_random(l: &BigInt, r: &BigInt) -> Self {
+        let mut rng = rand::thread_rng();
+
+        Self {
+            v: rng.gen_bigint_range(l, r),
+        }
     }
 }

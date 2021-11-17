@@ -2,7 +2,7 @@ pub use crate::babyjubjub::BabyJubjubField;
 pub use crate::curve::{Curve, Point};
 pub use crate::prime_field::*;
 pub use crate::key::{Sign, EDDSA};
-use num_bigint::{BigInt, ToBigInt};
+use num_bigint::{BigInt};
 use num_traits::{Zero};
 use num_integer::{Integer};
 
@@ -53,7 +53,7 @@ impl BabyJubjubPoint {
     fn _mul(&self, k: &BigInt) -> BabyJubjubPoint {
         let mut base = self.clone();
         let mut acc = BabyJubjubPoint::get_origin().clone();
-        let mut k = k.clone();
+        let mut k = k % BabyJubjubField::suborder();
 
         while !k.is_zero() {
             if k.is_odd() {
@@ -96,7 +96,7 @@ impl Curve<BabyJubjubField> for BabyJubjubPoint {
         encode
     }
     
-    fn decode(encode: &[u8]) -> Result<Self, String> {
+    fn decode(encode: &[u8]) -> Result<Self, Error> {
         let mut sign = false;
         let mut y = [0; 32];
         y[..].copy_from_slice(encode);
@@ -111,7 +111,7 @@ impl Curve<BabyJubjubField> for BabyJubjubPoint {
         if (sign && (x <= BabyJubjubField::order() / 2))
             || (!sign && (x > BabyJubjubField::order() / 2))
         {
-            x *= -(1.to_bigint().unwrap());
+            x = BabyJubjubField::order() - x;
         }
         let x = BabyJubjubField::new(&x);
         Ok(Point::<BabyJubjubField> { x, y })
