@@ -4,7 +4,7 @@
 extern crate lazy_static;
 
 use num_bigint::BigInt;
-use sha2::{Digest, Sha256};
+use sha2::{Digest, Sha256, Sha512};
 
 mod babyjubjub;
 mod babyjubjub_point;
@@ -18,37 +18,32 @@ pub use crate::curve::{Curve, Point};
 pub use crate::key::{Sign, EDDSA};
 pub use crate::prime_field::{Encode, Field, Order, PrimeField, BN_0, BN_1, BN_2};
 
-trait EllipticCurve<T> {}
+pub trait EllipticCurve<T> {}
 
-type BabyJubjub = dyn EllipticCurve<BabyJubjubPoint>;
+pub type BabyJubjub = dyn EllipticCurve<BabyJubjubPoint>;
 
 impl EDDSA<BabyJubjubField, BabyJubjubPoint> for BabyJubjub {
-    fn secret_scalar(secret_key: &BabyJubjubField) -> BigInt {
-        let mut s = [0u8; 32];
-        let (_, s_be) = secret_key.v.to_bytes_be();
-        s[(32 - s_be.len())..32].copy_from_slice(&s_be[..]);
-        let mut h = Self::hash(&s);
+    fn secret_scalar(secret_key: &[u8]) -> BigInt {
+        let mut h = Self::hash_key(&secret_key);
 
         h[0] &= 0xF8;
         h[31] &= 0x7F;
         h[31] |= 0x40;
 
-        let s = BigInt::from_bytes_le(num_bigint::Sign::Plus, &h);
+        let s = BigInt::from_bytes_le(num_bigint::Sign::Plus, &h[..32]);
         // FIXME: why
         s >> 3
     }
 
     // https://datatracker.ietf.org/doc/html/rfc8032#section-5.1.5
-    fn pubkey_from_secretkey(secret_key: &BabyJubjubField) -> Point<BabyJubjubField> {
+    fn pubkey_from_secretkey(secret_key: &[u8]) -> Point<BabyJubjubField> {
         let scalar_key = Self::secret_scalar(secret_key);
 
         BabyJubjubPoint::get_basepoint() * scalar_key
     }
 
     fn verify(data: &[u8], signature: Sign<BabyJubjubField>, public_key: BabyJubjubPoint) -> bool {
-        let h = Self::hash(
-            &([&signature.r.encode(), &public_key.encode(), data].concat())
-        );
+        let h = Self::hash_msg(&([&signature.r.encode(), &public_key.encode(), data].concat()));
         let concat = BigInt::from_bytes_le(num_bigint::Sign::Plus, &h);
 
         let l = BabyJubjubPoint::get_basepoint() * &signature.s.v;
@@ -58,9 +53,8 @@ impl EDDSA<BabyJubjubField, BabyJubjubPoint> for BabyJubjub {
         l == r2
     }
 
-    fn sign(data: &[u8], secret_key: BabyJubjubField) -> Sign<BabyJubjubField> {
-        let h = Self::hash(&secret_key.to_array());
-        let h = h;
+    fn sign(data: &[u8], secret_key: &[u8]) -> Sign<BabyJubjubField> {
+        let h = Self::hash_key(secret_key);
         let pk = Self::pubkey_from_secretkey(&secret_key);
 
         let mut s_bytes = [0u8; 32];
@@ -71,38 +65,45 @@ impl EDDSA<BabyJubjubField, BabyJubjubPoint> for BabyJubjub {
 
         let s = BigInt::from_bytes_le(num_bigint::Sign::Plus, &s_bytes);
 
-        let r = Self::hash(&[&h[32..], data].concat());
-        let r = BigInt::from_bytes_le(num_bigint::Sign::Plus, &r)
-            % BabyJubjubField::suborder();
+        let r = Self::hash_key(&[&h[32..], data].concat());
+        let r = BigInt::from_bytes_le(num_bigint::Sign::Plus, &r) % BabyJubjubField::suborder();
 
         let sig_r = BabyJubjubPoint::get_basepoint() * &r;
 
         let concat = [&sig_r.encode(), &pk.encode(), data].concat();
-        let hash_concat = Self::hash(&concat);
+        let hash_concat = Self::hash_msg(&concat);
         let concat = BigInt::from_bytes_le(num_bigint::Sign::Plus, &hash_concat);
 
         let sig_s = BabyJubjubField::new(&((r + concat * s) % BabyJubjubField::suborder()));
         Sign::<BabyJubjubField> { r: sig_r, s: sig_s }
     }
 
-    fn hash(data: &[u8]) -> [u8; 32] {
+    fn hash_key(data: &[u8]) -> [u8; 64] {
+        let mut res = [0u8; 64];
+        let mut hasher = Sha512::new();
+        hasher.update(data);
+        res.copy_from_slice(&hasher.finalize());
+        res
+    }
+
+    fn hash_msg(data: &[u8]) -> [u8; 32] {
         let mut hasher = Sha256::new();
         hasher.update(data);
         hasher.finalize().into()
     }
 }
 
-#[cfg(feature="std")]
+#[cfg(feature = "std")]
 use wasm_bindgen::prelude::*;
 
-#[cfg(feature="std")]
+#[cfg(feature = "std")]
 #[wasm_bindgen]
 pub fn sign(msg: &[u8], secret_key: &[u8]) -> Vec<u8> {
-    let sign = BabyJubjub::sign(msg, BabyJubjubField::decode(secret_key));
+    let sign = BabyJubjub::sign(msg, secret_key);
     [sign.r.encode(), sign.s.encode()].concat()
 }
 
-#[cfg(feature="std")]
+#[cfg(feature = "std")]
 #[wasm_bindgen]
 pub fn verify(msg: &[u8], signature: &[u8], public_key: &[u8]) -> bool {
     let r = BabyJubjubPoint::decode(&signature[..32]);
@@ -111,14 +112,27 @@ pub fn verify(msg: &[u8], signature: &[u8], public_key: &[u8]) -> bool {
 
     match (r, pk) {
         (Ok(r), Ok(pk)) => {
-            let sig = Sign::<BabyJubjubField> {
-                r,
-                s,
-            };
+            let sig = Sign::<BabyJubjubField> { r, s };
             BabyJubjub::verify(msg, sig, pk)
-        },
-        _ => false
+        }
+        _ => false,
     }
+}
+
+#[cfg(feature = "std")]
+#[wasm_bindgen]
+pub fn derive_private_key(msg: &[u8], derive_key: &[u8]) -> Vec<u8> {
+    let mut seed = Sha256::new();
+    seed.update(msg);
+    seed.update(derive_key);
+
+    seed.finalize().to_vec()
+}
+
+#[cfg(feature = "std")]
+#[wasm_bindgen]
+pub fn get_public_key(secret_key: &[u8]) -> Vec<u8> {
+    BabyJubjub::pubkey_from_secretkey(&secret_key).encode().into()
 }
 
 #[cfg(test)]
@@ -255,37 +269,44 @@ mod tests {
 
     #[test]
     fn test_signature_verify() {
-        let secret_key = BabyJubjubField::new(&2.to_bigint().unwrap());
+        let secret_key = [2u8; 32];
         let public_key = BabyJubjub::pubkey_from_secretkey(&secret_key);
         let msg = [1 as u8; 3];
 
-        let sign = BabyJubjub::sign(&msg, secret_key);
+        let sign = BabyJubjub::sign(&msg, &secret_key);
         let verify = BabyJubjub::verify(&msg, sign, public_key);
         assert!(verify)
     }
 
     #[test]
     fn test_decode() {
-        let secret_key = BabyJubjubField::new(
-            &BigInt::parse_bytes(
-                b"0001020304050607080900010203040506070809000102030405060708090001",
-                16,
-            )
-            .unwrap(),
-        );
+        let (_, secret_key) = BigInt::parse_bytes(
+            b"0001020304050607080900010203040506070809000102030405060708090001",
+            16,
+        )
+        .unwrap().to_bytes_be();
         let public_key = BabyJubjub::pubkey_from_secretkey(&secret_key);
-        assert_eq!(BabyJubjubPoint::decode(&public_key.encode()).unwrap(), public_key);
+        assert_eq!(
+            BabyJubjubPoint::decode(&public_key.encode()).unwrap(),
+            public_key
+        );
+    }
+
+    #[test]
+    fn test_suborder() {
+        assert_eq!(
+            BabyJubjubPoint::get_basepoint() * BabyJubjubField::suborder(),
+            BabyJubjubPoint::get_origin().clone()
+        );
     }
 
     #[test]
     fn test_sv() {
-        let secret_key = BabyJubjubField::new(
-            &BigInt::parse_bytes(
-                b"0001020304050607080900010203040506070809000102030405060708090001",
-                16,
-            )
-            .unwrap(),
-        );
+        let (_, secret_key) = BigInt::parse_bytes(
+            b"0001020304050607080900010203040506070809000102030405060708090001",
+            16,
+        )
+        .unwrap().to_bytes_be();
         let public_key = BabyJubjub::pubkey_from_secretkey(&secret_key);
 
         /*
@@ -312,7 +333,7 @@ mod tests {
                 );
         */
         let msg = [0u8, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-        let sign = BabyJubjub::sign(&msg, secret_key);
+        let sign = BabyJubjub::sign(&msg, &secret_key);
         /*
                 assert_eq!(sign.r.x,
                 BabyJubjubField::new(BigInt::parse_bytes(b"21253904451576600568378459528205653033385900307028841334532552830614710476912", 10).unwrap()));

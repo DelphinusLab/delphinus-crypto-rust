@@ -53,7 +53,7 @@ impl BabyJubjubPoint {
     fn _mul(&self, k: &BigInt) -> BabyJubjubPoint {
         let mut base = self.clone();
         let mut acc = BabyJubjubPoint::get_origin().clone();
-        let mut k = k % BabyJubjubField::suborder();
+        let mut k = k.clone();
 
         while !k.is_zero() {
             if k.is_odd() {
