@@ -92,17 +92,17 @@ impl EDDSA<BabyJubjubField, BabyJubjubPoint> for BabyJubjub {
     }
 }
 
-#[cfg(features="std")]
+#[cfg(feature="std")]
 use wasm_bindgen::prelude::*;
 
-#[cfg(features="std")]
+#[cfg(feature="std")]
 #[wasm_bindgen]
 pub fn sign(msg: &[u8], secret_key: &[u8]) -> Vec<u8> {
     let sign = BabyJubjub::sign(msg, BabyJubjubField::decode(secret_key));
     [sign.r.encode(), sign.s.encode()].concat()
 }
 
-#[cfg(features="std")]
+#[cfg(feature="std")]
 #[wasm_bindgen]
 pub fn verify(msg: &[u8], signature: &[u8], public_key: &[u8]) -> bool {
     let r = BabyJubjubPoint::decode(&signature[..32]);
