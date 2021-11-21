@@ -1,0 +1,19 @@
+{
+  "name": "delphinus-crypto",
+  "version": "1.0.0",
+  "description": "",
+  "main": "pkg/delphinus_crypto.js",
+  "scripts": {
+    "prepare": "wasm-pack build --release --target nodejs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ZhenXunGe/delphinus-crypto-rust.git"
+  },
+  "author": "delphinus-lab",
+  "license": "UNLICENSED",
+  "bugs": {
+    "url": "https://github.com/ZhenXunGe/delphinus-crypto-rust/issues"
+  },
+  "homepage": "https://github.com/ZhenXunGe/delphinus-crypto-rust#readme"
+}
