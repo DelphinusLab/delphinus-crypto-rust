@@ -1,0 +1,35 @@
+[package]
+name = 'delphinus-crypto'
+version = '0.1.0'
+edition = '2018'
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+getrandom = { version = '0.2', features = ['js'] }
+sha2 = { version = '0.9.5', default-features = false }
+rustc-hex = '1.0.0'
+lazy_static = { version = '1.4.0', features = ['spin_no_std'] }
+num-traits = { version = '0.2', default-features = false }
+num-integer = { version = '0.1.42', default-features = false }
+sp-std = { version = '3.0.0', default-features = false }
+
+[dependencies.rand]
+version = '0.8'
+optional = true
+
+[dependencies.wasm-bindgen]
+version = '0.2'
+optional = true
+
+[dependencies.num-bigint]
+version = '0.4'
+default-features = false
+
+[lib]
+name = 'delphinus_crypto'
+crate-type = ["cdylib"]
+
+[features]
+default = ['std']
+std = ['rand', 'wasm-bindgen', 'num-bigint/std', 'num-bigint/rand']
