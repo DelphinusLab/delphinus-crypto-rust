@@ -28,7 +28,7 @@ default-features = false
 
 [lib]
 name = 'delphinus_crypto'
-crate-type = ["rlib"]
+crate-type = ["cdylib"]
 
 [features]
 default = ['std']
