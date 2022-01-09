@@ -2,7 +2,7 @@ use super::*;
 use sp_std::ops::Mul;
 use num_bigint::{BigInt};
 use num_traits::{Zero};
-use std::vec::Vec;
+use sp_std::vec::Vec;
 
 impl<'a, 'b> Mul<&'b BigInt> for &'a BabyJubjubPoint {
     type Output = BabyJubjubPoint;
