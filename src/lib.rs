@@ -11,6 +11,7 @@ mod babyjubjub_point;
 mod curve;
 mod key;
 mod prime_field;
+mod mimc7;
 
 pub use crate::babyjubjub::BabyJubjubField;
 pub use crate::babyjubjub_point::BabyJubjubPoint;
