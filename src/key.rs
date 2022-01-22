@@ -16,6 +16,7 @@ pub trait EDDSA<F: PrimeField, C: Curve<F>> {
     fn sign(data: &[u8], secret_key: &[u8]) -> Sign<F>;
     fn hash_key(data: &[u8]) -> [u8; 64];
     fn hash_msg(data: &[u8]) -> [u8; 32];
+    fn mimc7_hash(r: &Point<F>, a: &Point<F>, m: &[u8]) -> [u8; 32];
 }
 
 #[cfg(feature="std")]

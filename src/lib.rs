@@ -5,6 +5,7 @@ extern crate lazy_static;
 
 use num_bigint::BigInt;
 use sha2::{Digest, Sha256, Sha512};
+use sp_std::vec::Vec;
 
 mod babyjubjub;
 mod babyjubjub_point;
@@ -18,6 +19,7 @@ pub use crate::babyjubjub_point::BabyJubjubPoint;
 pub use crate::curve::{Curve, Point};
 pub use crate::key::{Sign, EDDSA};
 pub use crate::prime_field::{Encode, Field, Order, PrimeField, BN_0, BN_1, BN_2};
+pub use crate::mimc7::{Mimc7};
 
 pub trait EllipticCurve<T> {}
 
@@ -44,7 +46,8 @@ impl EDDSA<BabyJubjubField, BabyJubjubPoint> for BabyJubjub {
     }
 
     fn verify(data: &[u8], signature: Sign<BabyJubjubField>, public_key: BabyJubjubPoint) -> bool {
-        let h = Self::hash_msg(&([&signature.r.encode(), &public_key.encode(), data].concat()));
+        // let h = Self::hash_msg(&([&signature.r.encode(), &public_key.encode(), data].concat()));
+        let h = Self::mimc7_hash(&signature.r, &public_key, data);
         let concat = BigInt::from_bytes_le(num_bigint::Sign::Plus, &h);
 
         let l = BabyJubjubPoint::get_basepoint() * &signature.s.v;
@@ -71,8 +74,11 @@ impl EDDSA<BabyJubjubField, BabyJubjubPoint> for BabyJubjub {
 
         let sig_r = BabyJubjubPoint::get_basepoint() * &r;
 
+        let hash_concat = Self::mimc7_hash(&sig_r, &pk, data);
+        /*
         let concat = [&sig_r.encode(), &pk.encode(), data].concat();
         let hash_concat = Self::hash_msg(&concat);
+        */
         let concat = BigInt::from_bytes_le(num_bigint::Sign::Plus, &hash_concat);
 
         let sig_s = BabyJubjubField::new(&((r + concat * s) % BabyJubjubField::suborder()));
@@ -91,6 +97,19 @@ impl EDDSA<BabyJubjubField, BabyJubjubPoint> for BabyJubjub {
         let mut hasher = Sha256::new();
         hasher.update(data);
         hasher.finalize().into()
+    }
+
+    fn mimc7_hash(r: &Point<BabyJubjubField>, a: &Point<BabyJubjubField>, m:&[u8]) -> [u8; 32] {
+        let m = BabyJubjubField::decode(m);
+        let mut arr:Vec<BabyJubjubField> = Vec::new();
+        arr.push(r.x.clone());
+        arr.push(r.y.clone());
+        arr.push(a.x.clone());
+        arr.push(a.y.clone());
+        arr.push(m);
+        let mimc = Mimc7::new(91);
+        let res = mimc.multi_hash(arr, &BabyJubjubField::new(&BigInt::from(0)));
+        BabyJubjubField::encode(&res)
     }
 }
 
