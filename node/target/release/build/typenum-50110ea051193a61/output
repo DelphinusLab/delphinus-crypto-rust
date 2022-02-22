@@ -1,2 +1,0 @@
-cargo:rustc-env=TYPENUM_BUILD_CONSTS=/home/yyu/git/delphinus-lerna/packages/crypto-rust/node/target/release/build/typenum-50110ea051193a61/out/consts.rs
-cargo:rustc-env=TYPENUM_BUILD_OP=/home/yyu/git/delphinus-lerna/packages/crypto-rust/node/target/release/build/typenum-50110ea051193a61/out/op.rs
