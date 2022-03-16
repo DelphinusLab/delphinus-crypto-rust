@@ -16,7 +16,6 @@ pub trait EDDSA<F: PrimeField, C: Curve<F>> {
     fn sign(data: &[u8], secret_key: &[u8]) -> Sign<F>;
     fn hash_key(data: &[u8]) -> [u8; 64];
     fn hash_msg(data: &[u8]) -> [u8; 32];
-    fn vec_from_bigint(x: &BigInt) -> Vec<u8>;
 }
 
 #[cfg(feature="std")]
