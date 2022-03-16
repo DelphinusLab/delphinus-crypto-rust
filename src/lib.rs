@@ -23,11 +23,6 @@ pub trait EllipticCurve<T> {}
 pub type BabyJubjub = dyn EllipticCurve<BabyJubjubPoint>;
 
 impl EDDSA<BabyJubjubField, BabyJubjubPoint> for BabyJubjub {
-    fn vec_from_bigint(x: &BigInt) -> Vec<u8> {
-        let (_, buf) = x.to_bytes_le();
-        buf
-    }
-
     fn secret_scalar(secret_key: &[u8]) -> BigInt {
         let mut h = Self::hash_key(&secret_key);
 
@@ -102,6 +97,12 @@ impl EDDSA<BabyJubjubField, BabyJubjubPoint> for BabyJubjub {
 use wasm_bindgen::prelude::*;
 
 #[cfg(feature = "std")]
+fn vec_from_bigint(x: &BigInt) -> Vec<u8> {
+    let (_, buf) = x.to_bytes_le();
+    buf
+}
+
+#[cfg(feature = "std")]
 #[wasm_bindgen]
 pub fn sign(msg: &[u8], secret_key: &[u8]) -> Vec<u8> {
     let sign = BabyJubjub::sign(msg, secret_key);
@@ -116,7 +117,7 @@ pub fn generate_rx_from_sign(sign: &[u8]) -> Vec<u8> {
 
     match r_option {
         Some(r) => {
-            let rx_u8_array = BabyJubjub::vec_from_bigint(&r.x.v);
+            let rx_u8_array = vec_from_bigint(&r.x.v);
             rx_u8_array
         }
         None => empty_vec
@@ -131,7 +132,7 @@ pub fn generate_ry_from_sign(sign: &[u8]) -> Vec<u8> {
 
     match r_option {
         Some(r) => {
-            let ry_u8_array = BabyJubjub::vec_from_bigint(&r.y.v);
+            let ry_u8_array = vec_from_bigint(&r.y.v);
             ry_u8_array
         }
         None => empty_vec
@@ -142,7 +143,7 @@ pub fn generate_ry_from_sign(sign: &[u8]) -> Vec<u8> {
 #[wasm_bindgen]
 pub fn generate_s_from_sign(sign: &[u8]) -> Vec<u8> {
     let s = BabyJubjubField::decode(&sign[32..]);
-    let s_u8_array = BabyJubjub::vec_from_bigint(&s.v);
+    let s_u8_array = vec_from_bigint(&s.v);
     s_u8_array
 }
 
@@ -154,7 +155,7 @@ pub fn generate_ax_from_pub_key(pub_key: &[u8]) -> Vec<u8> {
 
     match key_option {
         Some(key) => {
-            let x_u8_array = BabyJubjub::vec_from_bigint(&key.x.v);
+            let x_u8_array = vec_from_bigint(&key.x.v);
             x_u8_array
         }
         None => empty_vec
@@ -169,7 +170,7 @@ pub fn generate_ay_from_pub_key(pub_key: &[u8]) -> Vec<u8> {
 
     match key_option {
         Some(key) => {
-            let y_u8_array = BabyJubjub::vec_from_bigint(&key.y.v);
+            let y_u8_array = vec_from_bigint(&key.y.v);
             y_u8_array
         }
         None => empty_vec
